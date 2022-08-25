@@ -62,6 +62,7 @@ class OSBaseOperatorCharm(ops.charm.CharmBase):
         self._state.set_default(bootstrapped=False)
         self.relation_handlers = self.get_relation_handlers()
         self.pebble_handlers = self.get_pebble_handlers()
+        self.optional_relations = []
         self.framework.observe(self.on.config_changed, self._on_config_changed)
 
     def can_add_handler(
@@ -277,7 +278,8 @@ class OSBaseOperatorCharm(ops.charm.CharmBase):
         for handler in self.relation_handlers:
             if not handler.ready:
                 logger.info(f"Relation {handler.relation_name} incomplete")
-                return False
+                if handler.relation_name not in self.optional_relations:
+                    return False
         return True
 
     def contexts(self) -> sunbeam_core.OPSCharmContexts:
@@ -390,6 +392,7 @@ class OSBaseOperatorAPICharm(OSBaseOperatorCharm):
                 self._ingress_changed,
             )
             handlers.append(self.ingress_internal)
+            self.optional_relations.append("ingress-internal")
         if self.can_add_handler("ingress-public", handlers):
             self.ingress_public = sunbeam_rhandlers.IngressPublicHandler(
                 self,
@@ -498,10 +501,9 @@ class OSBaseOperatorAPICharm(OSBaseOperatorCharm):
         except AttributeError:
             pass
 
-        hostname = self.model.get_binding(
-            "identity-service"
-        ).network.ingress_address
-        return self.service_url(hostname)
+        # In case ingress-internal relation is not set, update
+        # internal url with public url.
+        return self.public_url
 
     def get_pebble_handlers(self) -> List[sunbeam_chandlers.PebbleHandler]:
         """Pebble handlers for the service."""
